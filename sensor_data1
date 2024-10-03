@@ -1,0 +1,109 @@
+using UnityEngine;
+using uPLibrary.Networking.M2Mqtt;
+using uPLibrary.Networking.M2Mqtt.Messages;
+using UnityEngine.UI;
+
+public class OilLevelMonitor : MonoBehaviour
+{
+    private MqttClient client;
+    private string brokerAddress = "broker.emqx.io"; // Replace with your broker address
+    private int brokerPort = 1883; // Use 1883 for non-SSL, 8883 for SSL
+
+    public Text temperatureText; // Text field to display temperature
+    public Text oilLevelText;    // Text field to display oil level percentage
+    public Button temperatureButton;
+    public Button oilLevelButton;
+
+    private string temperatureData = "No Data";
+    private string oilLevelData = "No Data";
+
+    private bool isTemperatureUpdated = false;
+    private bool isOilLevelUpdated = false;
+
+    void Start()
+    {
+        // Initialize MQTT client
+        client = new MqttClient(brokerAddress, brokerPort, false, null, null, MqttSslProtocols.None);
+
+        // Connect to the MQTT broker
+        string clientId = System.Guid.NewGuid().ToString();
+        client.Connect(clientId);
+
+        if (client.IsConnected)
+        {
+            Debug.Log("Connected to MQTT broker.");
+            // Subscribe to the temperature and oil level topics
+            string[] topics = { "testtopic/temp", "testtopic/waterlevel" };
+            byte[] qosLevels = { MqttMsgBase.QOS_LEVEL_AT_MOST_ONCE, MqttMsgBase.QOS_LEVEL_AT_MOST_ONCE };
+            client.Subscribe(topics, qosLevels);
+        }
+        else
+        {
+            Debug.LogError("Failed to connect to MQTT broker.");
+        }
+
+        // Set MQTT message callback
+        client.MqttMsgPublishReceived += OnMessageReceived;
+
+        // Set button listeners
+        temperatureButton.onClick.AddListener(() => UpdateTemperatureDisplay());
+        oilLevelButton.onClick.AddListener(() => UpdateOilLevelDisplay());
+    }
+
+    void Update()
+    {
+        // Update the UI if new data is available
+        if (isTemperatureUpdated)
+        {
+            temperatureText.text = temperatureData;
+            isTemperatureUpdated = false;
+        }
+
+        if (isOilLevelUpdated)
+        {
+            oilLevelText.text = oilLevelData;
+            isOilLevelUpdated = false;
+        }
+
+        // Connection status check
+        if (!client.IsConnected)
+        {
+            Debug.LogError("MQTT client is not connected.");
+        }
+    }
+
+    private void UpdateTemperatureDisplay()
+    {
+        temperatureText.text = temperatureData;
+    }
+
+    private void UpdateOilLevelDisplay()
+    {
+        oilLevelText.text = oilLevelData;
+    }
+
+    private void OnMessageReceived(object sender, MqttMsgPublishEventArgs e)
+    {
+        string message = System.Text.Encoding.UTF8.GetString(e.Message);
+
+        if (e.Topic == "testtopic/temp")
+        {
+            temperatureData = message;
+            isTemperatureUpdated = true;
+        }
+        else if (e.Topic == "testtopic/waterlevel")
+        {
+            oilLevelData = message;
+            isOilLevelUpdated = true;
+        }
+    }
+
+    void OnDestroy()
+    {
+        // Disconnect the client when the application quits
+        if (client.IsConnected)
+        {
+            client.Disconnect();
+        }
+    }
+}
