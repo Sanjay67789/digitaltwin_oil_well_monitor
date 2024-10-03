@@ -32,12 +32,12 @@ Installation:
   Clone this repository:
     bash
       Copy code
-        git clone https://github.com/SYNDICATE-SAVANTS/digital-twin-oil-well-monitor.git
+        git clone : https://github.com/Sanjay67789/digitaltwin_oil_well_monitor/tree/main
  
   Navigate to the project directory:
     bash
       Copy code
-        cd digital-twin-oil-well-monitor
+        cd digitaltwin_oil_well_monitor
 
 Open the project in Unity and configure the MQTT settings.
 Set up the backend server for data analysis (Python and necessary libraries).
