@@ -1,0 +1,132 @@
+using UnityEngine;
+using UnityEngine.UI;
+using System.Collections.Generic;
+using uPLibrary.Networking.M2Mqtt;
+using uPLibrary.Networking.M2Mqtt.Messages;
+using System.Text;
+
+public class realtimegraph : MonoBehaviour
+{
+    // MQTT Settings
+    private MqttClient client;
+    public string brokerAddress = "broker.emqx.io";  // Replace with your MQTT broker address
+    public string topic = "testtopic/temp";                  // Replace with your topic
+
+    // Graph Settings
+    [SerializeField] private RectTransform graphContainer;  // Reference to the Image component for the graph container
+    [SerializeField] private Sprite circleSprite;           // Circle sprite for data points
+    private List<float> valueList = new List<float>();      // List to store real-time data
+    private float xSize = 50f;                              // X spacing between points
+    private float yMaximum = 100f;                          // Max Y value for scaling
+
+    void Start()
+    {
+        // Initialize MQTT client
+        client = new MqttClient(brokerAddress);
+        client.MqttMsgPublishReceived += OnMessageReceived;  // Subscribe to the message received event
+
+        string clientId = System.Guid.NewGuid().ToString();
+        client.Connect(clientId);
+        client.Subscribe(new string[] { topic }, new byte[] { MqttMsgBase.QOS_LEVEL_AT_MOST_ONCE });
+    }
+
+    // Callback when a message is received from MQTT
+    void OnMessageReceived(object sender, MqttMsgPublishEventArgs e)
+    {
+        string message = Encoding.UTF8.GetString(e.Message);
+        Debug.Log("Received message: " + message);
+
+        // Parse the message and update the graph
+        if (float.TryParse(message, out float newValue))
+        {
+            UpdateGraphWithData(newValue);
+        }
+    }
+
+    // Function to update the graph with new real-time data
+    private void UpdateGraphWithData(float newValue)
+    {
+        valueList.Add(newValue);  // Add new value to the list
+
+        // Optional: Limit the number of points on the graph for performance
+        if (valueList.Count > 20)
+        {
+            valueList.RemoveAt(0);
+        }
+
+        RedrawGraph();  // Redraw the graph with updated values
+    }
+
+    // Function to redraw the graph
+    private void RedrawGraph()
+    {
+        // Clear the old graph visuals before redrawing
+        foreach (Transform child in graphContainer)
+        {
+            Destroy(child.gameObject);
+        }
+
+        GameObject lastCircleGameObject = null;
+        for (int i = 0; i < valueList.Count; i++)
+        {
+            float xPosition = xSize * i;
+            float yPosition = (valueList[i] / yMaximum) * graphContainer.sizeDelta.y;
+            GameObject circleGameObject = CreateCircle(new Vector2(xPosition, yPosition));
+
+            if (lastCircleGameObject != null)
+            {
+                CreateDotConnection(lastCircleGameObject.GetComponent<RectTransform>().anchoredPosition,
+                                    circleGameObject.GetComponent<RectTransform>().anchoredPosition);
+            }
+
+            lastCircleGameObject = circleGameObject;
+        }
+    }
+
+    // Function to create a circle (data point) on the graph
+    private GameObject CreateCircle(Vector2 anchoredPosition)
+    {
+        GameObject gameObject = new GameObject("circle", typeof(Image));
+        gameObject.transform.SetParent(graphContainer, false);
+        gameObject.GetComponent<Image>().sprite = circleSprite;
+
+        RectTransform rectTransform = gameObject.GetComponent<RectTransform>();
+        rectTransform.anchoredPosition = anchoredPosition;
+        rectTransform.sizeDelta = new Vector2(11, 11);  // Circle size
+        rectTransform.anchorMin = new Vector2(0, 0);
+        rectTransform.anchorMax = new Vector2(0, 0);
+        return gameObject;
+    }
+
+    // Function to create a line connection between two data points
+    private void CreateDotConnection(Vector2 dotPositionA, Vector2 dotPositionB)
+    {
+        GameObject gameObject = new GameObject("dotConnection", typeof(Image));
+        gameObject.transform.SetParent(graphContainer, false);
+        gameObject.GetComponent<Image>().color = new Color(1, 1, 1, .5f);  // Color of the line
+
+        RectTransform rectTransform = gameObject.GetComponent<RectTransform>();
+        Vector2 dir = (dotPositionB - dotPositionA).normalized;
+        float distance = Vector2.Distance(dotPositionA, dotPositionB);
+        rectTransform.sizeDelta = new Vector2(distance, 3f);  // Width of the line
+        rectTransform.anchorMin = new Vector2(0, 0);
+        rectTransform.anchorMax = new Vector2(0, 0);
+        rectTransform.anchoredPosition = dotPositionA + dir * distance * .5f;
+        rectTransform.localEulerAngles = new Vector3(0, 0, GetAngleFromVectorFloat(dir));
+    }
+
+    // Helper function to calculate angle from direction vector
+    private float GetAngleFromVectorFloat(Vector3 dir)
+    {
+        return Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+    }
+
+    // Clean up MQTT connection on application quit
+    void OnApplicationQuit()
+    {
+        if (client.IsConnected)
+        {
+            client.Disconnect();
+        }
+    }
+}
