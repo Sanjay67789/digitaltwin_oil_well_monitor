@@ -1,0 +1,63 @@
+using UnityEngine;
+using UnityEngine.UI;  // Import the UI namespace
+using uPLibrary.Networking.M2Mqtt;
+using uPLibrary.Networking.M2Mqtt.Messages;
+
+public class MotorControl : MonoBehaviour
+{
+    public Button onButton;  // Reference to the ON button
+    public Button offButton; // Reference to the OFF button
+
+    private MqttClient client;
+    private string brokerAddress = "broker.emqx.io";  // Replace with your broker address
+    private int brokerPort = 1883;  // Use 1883 for non-SSL, 8883 for SSL
+
+    void Start()
+    {
+        // Initialize MQTT client and connect to broker
+        client = new MqttClient(brokerAddress, brokerPort, false, null, null, MqttSslProtocols.None);
+
+        // Connect to the MQTT broker
+        string clientId = System.Guid.NewGuid().ToString();
+        client.Connect(clientId);
+
+        // Ensure the client is connected
+        if (client.IsConnected)
+        {
+            // Add listeners to the buttons
+            onButton.onClick.AddListener(TurnMotorOn);
+            offButton.onClick.AddListener(TurnMotorOff);
+        }
+        else
+        {
+            Debug.LogError("Failed to connect to MQTT broker.");
+        }
+    }
+
+    public void TurnMotorOn()
+    {
+        if (client.IsConnected)
+        {
+            // Publish the message "1" to the topic "testtopic/motor" to turn the motor ON
+            client.Publish("testtopic/motor", System.Text.Encoding.UTF8.GetBytes("1"), MqttMsgBase.QOS_LEVEL_AT_MOST_ONCE, false);
+        }
+    }
+
+    public void TurnMotorOff()
+    {
+        if (client.IsConnected)
+        {
+            // Publish the message "0" to the topic "testtopic/motor" to turn the motor OFF
+            client.Publish("testtopic/motor", System.Text.Encoding.UTF8.GetBytes("0"), MqttMsgBase.QOS_LEVEL_AT_MOST_ONCE, false);
+        }
+    }
+
+    void OnDestroy()
+    {
+        // Disconnect the client when the application quits
+        if (client.IsConnected)
+        {
+            client.Disconnect();
+        }
+    }
+}
