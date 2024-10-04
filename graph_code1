@@ -1,0 +1,158 @@
+using UnityEngine;
+using uPLibrary.Networking.M2Mqtt; // M2Mqtt namespace
+using uPLibrary.Networking.M2Mqtt.Messages;
+using System;
+using System.Text;
+using UnityEngine.UI;
+using System.Collections.Generic;
+
+public class realtimegraph : MonoBehaviour
+{
+    // Graph Settings
+    [SerializeField] private RectTransform graphContainer;  // Graph container for the graph UI
+    [SerializeField] private Sprite circleSprite;           // Circle sprite for graph points
+    private List<float> valueList = new List<float>();      // Values from MQTT
+    private float xSize = 23f;                              // X-axis spacing
+    private float yMaximum = 50f;                           // Max Y-axis value (can be adjusted)
+    private MqttClient client;                              // MQTT client
+    private string brokerAddress = "broker.emqx.io";        // MQTT Broker address
+    private int brokerPort = 1883;                          // MQTT Broker port (default for non-SSL)
+
+    private float timeSinceLastUpdate = 0f;  // Timer for graph update interval
+    private float updateInterval = 1f;       // Time interval for graph update
+
+    void Start()
+    {
+        // Initialize MQTT Client
+        client = new MqttClient(brokerAddress, brokerPort, false, null, null, MqttSslProtocols.None);
+
+        client.MqttMsgPublishReceived += Client_MqttMsgPublishReceived;
+
+        string clientId = Guid.NewGuid().ToString();
+        client.Connect(clientId);
+
+        // Subscribe to the desired topic
+        client.Subscribe(new string[] { "testtopic/temp" }, new byte[] { MqttMsgBase.QOS_LEVEL_AT_MOST_ONCE });
+
+        // Initialize graph
+        valueList.Add(0);  // Start with an initial value
+        RedrawGraph();
+    }
+
+    void Update()
+    {
+        timeSinceLastUpdate += Time.deltaTime;
+
+        if (timeSinceLastUpdate >= updateInterval)
+        {
+            RedrawGraph();
+            timeSinceLastUpdate = 0f;  // Reset the timer
+        }
+    }
+
+    // Callback for when a message is received from MQTT
+    private void Client_MqttMsgPublishReceived(object sender, MqttMsgPublishEventArgs e)
+    {
+        string message = Encoding.UTF8.GetString(e.Message);
+
+        // Extract only numeric part, ignoring any non-numeric characters like " °C"
+        string numericMessage = ExtractNumericValue(message);
+
+        if (float.TryParse(numericMessage, out float mqttValue))
+        {
+            Debug.Log("Received value from MQTT: " + mqttValue);
+            valueList.Add(mqttValue);
+
+            // Optional: Limit the number of points to prevent performance issues
+            if (valueList.Count > 20)
+            {
+                valueList.RemoveAt(0);
+            }
+        }
+        else
+        {
+            Debug.LogWarning("Failed to parse MQTT message: " + message);
+        }
+    }
+
+    // Helper method to extract numeric value from the message string
+    private string ExtractNumericValue(string message)
+    {
+        StringBuilder numericValue = new StringBuilder();
+
+        foreach (char c in message)
+        {
+            // Allow digits, a single dot for decimals, and a negative sign for negative numbers
+            if (char.IsDigit(c) || c == '.' || c == '-')
+            {
+                numericValue.Append(c);
+            }
+        }
+
+        return numericValue.ToString();
+    }
+
+    // Function to redraw the graph
+    private void RedrawGraph()
+    {
+        // Clear the old graph visuals
+        foreach (Transform child in graphContainer)
+        {
+            Destroy(child.gameObject);
+        }
+
+        GameObject lastCircleGameObject = null;
+        for (int i = 0; i < valueList.Count; i++)
+        {
+            float xPosition = xSize * i;
+            float yPosition = (valueList[i] / yMaximum) * graphContainer.sizeDelta.y;
+            GameObject circleGameObject = CreateCircle(new Vector2(xPosition, yPosition));
+
+            if (lastCircleGameObject != null)
+            {
+                CreateDotConnection(lastCircleGameObject.GetComponent<RectTransform>().anchoredPosition,
+                                    circleGameObject.GetComponent<RectTransform>().anchoredPosition);
+            }
+
+            lastCircleGameObject = circleGameObject;
+        }
+    }
+
+    // Function to create a data point
+    private GameObject CreateCircle(Vector2 anchoredPosition)
+    {
+        GameObject gameObject = new GameObject("circle", typeof(Image));
+        gameObject.transform.SetParent(graphContainer, false);
+        gameObject.GetComponent<Image>().sprite = circleSprite;
+
+        RectTransform rectTransform = gameObject.GetComponent<RectTransform>();
+        rectTransform.anchoredPosition = anchoredPosition;
+        rectTransform.sizeDelta = new Vector2(11, 11);  // Set size of the data point
+        rectTransform.anchorMin = new Vector2(0, 0);
+        rectTransform.anchorMax = new Vector2(0, 0);
+        return gameObject;
+    }
+
+    // Function to create a line between data points
+    private void CreateDotConnection(Vector2 dotPositionA, Vector2 dotPositionB)
+    {
+        GameObject gameObject = new GameObject("dotConnection", typeof(Image));
+        gameObject.transform.SetParent(graphContainer, false);
+        gameObject.GetComponent<Image>().color = new Color(1, 1, 1, .5f);  // Set line color
+
+        RectTransform rectTransform = gameObject.GetComponent<RectTransform>();
+        Vector2 dir = (dotPositionB - dotPositionA).normalized;
+        float distance = Vector2.Distance(dotPositionA, dotPositionB);
+        rectTransform.sizeDelta = new Vector2(distance, 3f);  // Set line width
+        rectTransform.anchorMin = new Vector2(0, 0);
+        rectTransform.anchorMax = new Vector2(0, 0);
+        rectTransform.anchoredPosition = dotPositionA + dir * distance * .5f;
+        rectTransform.localEulerAngles = new Vector3(0, 0, GetAngleFromVectorFloat(dir));
+    }
+
+    // Helper function to get angle from a direction vector
+    private float GetAngleFromVectorFloat(Vector3 dir)
+    {
+        return Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+    }
+}
