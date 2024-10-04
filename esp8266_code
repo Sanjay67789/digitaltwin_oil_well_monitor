@@ -1,0 +1,156 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+// Motor pins
+const int ENA = D7;
+const int IN1 = D1;
+const int IN2 = D2;
+
+// WiFi credentials
+const char* ssid = "Prem";
+const char* pass = "Prem1234";
+
+// MQTT broker details
+const char* broker = "broker.emqx.io";
+const int mqttPort = 1883;
+const char* motorControlTopic = "testtopic/motor";
+const char* tempTopic = "testtopic/temp";
+const char* waterLevelTopic = "testtopic/waterlevel";
+
+// Water Level Sensor
+#define WATER_LEVEL_SENSOR_PIN A0
+
+// DS18B20 Temperature Sensor
+#define ONE_WIRE_BUS 2
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+long currentMillis = 0;
+long previousMillis = 0;
+int interval = 1000;
+boolean sendData = true;
+boolean sendTemperature = true;
+boolean sendWaterLevel = true;
+boolean sendToSerial = true;
+
+float temperature = 0.0;
+int waterLevel = 0;
+
+void setup() {
+  Serial.begin(9600);
+
+  // Initialize motor pins
+  pinMode(ENA, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+
+  // Initialize water level sensor
+  pinMode(WATER_LEVEL_SENSOR_PIN, INPUT);
+
+  // Connect to Wi-Fi
+  setupWiFi();
+
+  // Set up MQTT client
+  client.setServer(broker, mqttPort);
+  client.setCallback(mqttCallback);
+
+  // Initialize temperature sensor
+  sensors.begin();
+
+  // Initial motor state
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  analogWrite(ENA, 0); // Ensure motor is off at startup
+}
+
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+  currentMillis = millis();
+
+  if (currentMillis - previousMillis >= interval && sendData) {
+    previousMillis = currentMillis;
+
+    if (sendToSerial) {
+      // Read temperature
+      sensors.requestTemperatures();
+      temperature = sensors.getTempCByIndex(0);
+      Serial.print("Temperature: ");
+      Serial.print(temperature);
+      Serial.println(" °C");
+
+      // Read water level
+      waterLevel = analogRead(WATER_LEVEL_SENSOR_PIN);
+      waterLevel = map(waterLevel, 0, 1023, 0, 100); // Convert to percentage
+      Serial.print("Water Level: ");
+      Serial.print(waterLevel);
+      Serial.println(" %");
+    }
+
+    // Publish temperature
+    if (sendTemperature) {
+      char tempMessage[50];
+      snprintf(tempMessage, sizeof(tempMessage), "%.2f °C", temperature);
+      client.publish(tempTopic, tempMessage);
+    }
+
+    // Publish water level
+    if (sendWaterLevel) {
+      char waterLevelMessage[50];
+      snprintf(waterLevelMessage, sizeof(waterLevelMessage), "%d %%", waterLevel);
+      client.publish(waterLevelTopic, waterLevelMessage);
+    }
+  }
+}
+
+void setupWiFi() {
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, pass);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    String clientId = "ESP8266Client";
+    clientId += String(random(0xffff), HEX);
+    if (client.connect(clientId.c_str())) {
+      Serial.println("connected");
+      client.subscribe(motorControlTopic);
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  String message;
+  for (int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+  Serial.println(message);
+
+  // Motor control based on the received message
+  if (String(topic) == motorControlTopic) {
