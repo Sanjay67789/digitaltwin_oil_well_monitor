@@ -42,6 +42,7 @@ Installation:
 Open the project in Unity and configure the MQTT settings.
 Set up the backend server for data analysis (Python and necessary libraries).
 Run the project in Unity to visualize real-time data in the digital twin.
+In this repositories i included oil rig 3D model fbx file
 
 Contact
 For any inquiries or collaboration opportunities, feel free to reach out to us:
