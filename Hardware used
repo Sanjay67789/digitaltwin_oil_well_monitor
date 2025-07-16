@@ -1,0 +1,11 @@
+#Hardware used:
+3d printed Oil Well Hardware Setup
+Laptop: Acer aspire 7 GAMING LAPTOP (intel i5 12450H with RTX 2050 6gb ram)
+Micro Controller: ESP 8266 with Wi-Fi Module ( 2.4 GHz - 2.5 GHz ) 
+Driver Module: L298N Dual H Bridge DC Motor Driver
+Motor: Dual Shaft 3v Dc Gear Motor 9v Dc Motor
+Hydraulic Sensors: Temperature Sensor(DS18B20), Water Level Sensor(RKI-2350)
+VR Kit: Oculus Quest 2
+Soldering Kit
+Jumper Wires
+PCB Dot Board
